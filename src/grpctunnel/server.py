@@ -236,6 +236,7 @@ class TunnelServer:
         # Main receive loop - uses a persistent read task to avoid cancellation issues
         # Writes are processed when read completes or when signaled via write_event
         read_task: Optional[asyncio.Task] = None
+        write_wait_task: Optional[asyncio.Task] = None
         write_event = asyncio.Event()
 
         # Patch enqueue_write to signal when writes are available
@@ -254,18 +255,20 @@ class TunnelServer:
 
                 # Wait for either read to complete or writes to be available
                 write_wait_task = asyncio.create_task(write_event.wait())
-                done, _ = await asyncio.wait(
-                    [read_task, write_wait_task],
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-
-                # Cancel the write_wait_task if still pending
-                if write_wait_task not in done:
-                    write_wait_task.cancel()
-                    try:
-                        await write_wait_task
-                    except asyncio.CancelledError:
-                        pass
+                try:
+                    done, _ = await asyncio.wait(
+                        [read_task, write_wait_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                finally:
+                    # Always cancel the write_wait_task if still pending
+                    if not write_wait_task.done():
+                        write_wait_task.cancel()
+                        try:
+                            await write_wait_task
+                        except asyncio.CancelledError:
+                            pass
+                    write_wait_task = None
 
                 # Process any pending writes (non-blocking)
                 if write_event.is_set():
@@ -316,13 +319,6 @@ class TunnelServer:
                         await target_stream._accept_client_frame(msg)
 
         except asyncio.CancelledError:
-            # Clean shutdown - cancel pending read task
-            if read_task is not None:
-                read_task.cancel()
-                try:
-                    await read_task
-                except asyncio.CancelledError:
-                    pass
             # Don't try to write to stream on cancellation - it may be closed
             # Just discard any pending writes
             while not self._write_queue.empty():
@@ -336,6 +332,13 @@ class TunnelServer:
             traceback.print_exc()
             raise
         finally:
+            # Clean up pending tasks
+            if read_task is not None and not read_task.done():
+                read_task.cancel()
+                try:
+                    await read_task
+                except asyncio.CancelledError:
+                    pass
             # Restore original enqueue_write
             self.enqueue_write = original_enqueue  # type: ignore
 
@@ -823,24 +826,21 @@ class TunnelServerStream:
             trailers = self._response_trailers
 
             # Send close message via server's write queue to avoid concurrent ops
-            async def send_close() -> None:
-                if send_headers and headers is not None:
-                    headers_msg = ServerToClient(
-                        stream_id=self._stream_id,
-                        response_headers=to_proto(headers),
-                    )
-                    await self._server.enqueue_write(headers_msg)
-
-                close_msg = ServerToClient(
+            if send_headers and headers is not None:
+                headers_msg = ServerToClient(
                     stream_id=self._stream_id,
-                    close_stream={
-                        "status": status,
-                        "response_trailers": to_proto(trailers),
-                    },
+                    response_headers=to_proto(headers),
                 )
-                await self._server.enqueue_write(close_msg)
+                await self._server.enqueue_write(headers_msg)
 
-            asyncio.create_task(send_close())
+            close_msg = ServerToClient(
+                stream_id=self._stream_id,
+                close_stream={
+                    "status": status,
+                    "response_trailers": to_proto(trailers),
+                },
+            )
+            await self._server.enqueue_write(close_msg)
 
             # Clear state
             self._sent_headers = True

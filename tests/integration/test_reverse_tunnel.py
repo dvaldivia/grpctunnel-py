@@ -313,6 +313,8 @@ class TestReverseTunnel:
             assert len(responses) == 3
             assert responses == ["test-0", "test-1", "test-2"]
 
+            # Small delay to allow gRPC stream cleanup before stopping
+            await asyncio.sleep(0.1)
             await reverse_server.stop()
             try:
                 started, err = await asyncio.wait_for(tunnel_task, timeout=1.0)
@@ -374,6 +376,8 @@ class TestReverseTunnel:
             assert response is not None
             assert response.message == "msg0,msg1,msg2"
 
+            # Small delay to allow gRPC stream cleanup before stopping
+            await asyncio.sleep(0.1)
             await reverse_server.stop()
             try:
                 started, err = await asyncio.wait_for(tunnel_task, timeout=1.0)
@@ -502,6 +506,8 @@ class TestReverseTunnel:
             for i, result in enumerate(results):
                 assert result == f"concurrent-{i}"
 
+            # Small delay to allow cleanup before stopping
+            await asyncio.sleep(0.1)
             await reverse_server.stop()
             try:
                 started, err = await asyncio.wait_for(tunnel_task, timeout=1.0)
