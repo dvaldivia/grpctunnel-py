@@ -1,6 +1,6 @@
 [project]
 name = "grpctunnel-py"
-version = "0.1.0"
+version = "0.3.0"
 description = "Python port of grpctunnel - carry gRPC over gRPC"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -10,7 +10,7 @@ authors = [
 ]
 keywords = ["grpc", "tunnel", "reverse-tunnel", "rpc"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",

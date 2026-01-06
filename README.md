@@ -26,13 +26,13 @@ interoperate seamlessly.
 ## Installation
 
 ```bash
-pip install grpctunnel
+pip install grpctunnel-py
 ```
 
 Or with uv:
 
 ```bash
-uv add grpctunnel
+uv add grpctunnel-py
 ```
 
 ## Requirements
